@@ -5,6 +5,8 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "pstat.h"
+
 
 struct cpu cpus[NCPU];
 
@@ -119,6 +121,7 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  p->cputime = 0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -426,6 +429,68 @@ wait(uint64 addr)
     sleep(p, &wait_lock);  //DOC: wait-sleep
   }
 }
+
+int
+wait2(uint64 addr_status, uint64 addr_rusage)
+{
+  struct proc *p = myproc();
+  int havekids, pid;
+  struct rusage ru;
+
+  acquire(&wait_lock);                 // hold wait_lock like wait()
+
+  for(;;){
+    havekids = 0;
+    for(struct proc *pp = proc; pp < &proc[NPROC]; pp++){
+      if(pp->parent == p){
+        acquire(&pp->lock);
+        havekids = 1;
+        if(pp->state == ZOMBIE){
+          pid = pp->pid;
+
+          // prepare rusage (before freeproc)
+          ru.cputime = pp->cputime;
+
+          // copy xstate like wait()
+          if(addr_status != 0){
+            if(copyout(p->pagetable, addr_status,
+                       (char *)&pp->xstate, sizeof(pp->xstate)) < 0){
+              release(&pp->lock);
+              release(&wait_lock);
+              return -1;
+            }
+          }
+
+          // copy rusage
+          if(addr_rusage != 0){
+            if(copyout(p->pagetable, addr_rusage,
+                       (char *)&ru, sizeof(ru)) < 0){
+              release(&pp->lock);
+              release(&wait_lock);
+              return -1;
+            }
+          }
+
+          freeproc(pp);                // requires pp->lock held
+          release(&pp->lock);
+          release(&wait_lock);         // release before returning
+          return pid;
+        }
+        release(&pp->lock);
+      }
+    }
+
+    if(!havekids || p->killed){
+      release(&wait_lock);             //  balanced release on exit paths
+      return -1;
+    }
+
+    // sleep will atomically release wait_lock and re-acquire on wake
+    sleep(p, &wait_lock);
+  }
+}
+
+
 
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.

@@ -95,3 +95,14 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+// wrapper that fetches user pointers and calls kernel wait2
+uint64
+sys_wait2(void)
+{
+  uint64 p_status;    // user pointer to int
+  uint64 p_rusage;    // user pointer to struct rusage
+  if (argaddr(0, &p_status) < 0) return -1;
+  if (argaddr(1, &p_rusage) < 0) return -1;
+  return wait2(p_status, p_rusage);
+}
