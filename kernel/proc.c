@@ -121,6 +121,8 @@ found:
   p->pid = allocpid();
   p->state = USED;
 
+  p->priority = 0;        // default priority for new processes
+
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -304,6 +306,8 @@ fork(void)
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
+  np->priority = p->priority;  // inherit parent priority
+
   pid = np->pid;
 
   release(&np->lock);
@@ -440,30 +444,52 @@ scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
-  
   c->proc = 0;
+
   for(;;){
-    // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
-    for(p = proc; p < &proc[NPROC]; p++) {
+#if SCHED_POLICY == SCHED_PRIORITY
+    struct proc *hp = 0;
+    int maxp = -1;
+
+    // find highest-priority RUNNABLE process
+    for(p = proc; p < &proc[NPROC]; p++){
       acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
+      if(p->state == RUNNABLE && p->priority > maxp){
+        maxp = p->priority;
+        hp = p;
+      }
+      release(&p->lock);
+    }
+
+    if(hp){
+      acquire(&hp->lock);
+      if(hp->state == RUNNABLE){
+        hp->state = RUNNING;
+        c->proc = hp;
+        swtch(&c->context, &hp->context);
+        c->proc = 0;
+      }
+      release(&hp->lock);
+    }
+
+#else
+    // Default round-robin scheduler
+    for(p = proc; p < &proc[NPROC]; p++){
+      acquire(&p->lock);
+      if(p->state == RUNNABLE){
         p->state = RUNNING;
         c->proc = p;
         swtch(&c->context, &p->context);
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
         c->proc = 0;
       }
       release(&p->lock);
     }
+#endif
   }
 }
+
 
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
@@ -674,6 +700,7 @@ procinfo(uint64 addr)
     procinfo.pid = p->pid;
     procinfo.state = p->state;
     procinfo.size = p->sz;
+    procinfo.priority = p->priority;
     if (p->parent)
       procinfo.ppid = (p->parent)->pid;
     else
