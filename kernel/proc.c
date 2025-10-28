@@ -122,6 +122,7 @@ found:
   p->state = USED;
 
   p->priority = 0;        // default priority for new processes
+  p->readytime = 0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -524,6 +525,7 @@ yield(void)
 {
   struct proc *p = myproc();
   acquire(&p->lock);
+  p->readytime = ticks;   // record when it re-enters ready queue
   p->state = RUNNABLE;
   sched();
   release(&p->lock);
@@ -565,6 +567,7 @@ sleep(void *chan, struct spinlock *lk)
   // so it's okay to release lk.
 
   acquire(&p->lock);  //DOC: sleeplock1
+  p->readytime = ticks;   // record when it re-enters ready queue
   release(lk);
 
   // Go to sleep.
@@ -591,6 +594,7 @@ wakeup(void *chan)
   for(p = proc; p < &proc[NPROC]; p++) {
     if(p != myproc()){
       acquire(&p->lock);
+      p->readytime = ticks;   // record when it re-enters ready queue
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
       }
@@ -701,6 +705,7 @@ procinfo(uint64 addr)
     procinfo.state = p->state;
     procinfo.size = p->sz;
     procinfo.priority = p->priority;
+    procinfo.readytime = p->readytime;
     if (p->parent)
       procinfo.ppid = (p->parent)->pid;
     else

@@ -93,6 +93,7 @@ struct proc {
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
   int priority;               // Base priority (0-49)
+  uint readytime;             // ticks when process became RUNNABLE
 
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
