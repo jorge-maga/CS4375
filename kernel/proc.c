@@ -21,6 +21,9 @@ static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
 
+extern uint ticks;
+
+
 // helps ensure that wakeups of wait()ing
 // parents are not lost. helps obey the
 // memory model when using p->parent.
@@ -319,6 +322,10 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
+  
+  np->readytime = ticks;     // record when it enters ready queue
+  np->state = RUNNABLE;
+
   release(&np->lock);
 
   return pid;
@@ -454,12 +461,17 @@ scheduler(void)
     struct proc *hp = 0;
     int maxp = -1;
 
-    // find highest-priority RUNNABLE process
+    // scan all procs to pick the RUNNABLE one with highest effective priority
     for(p = proc; p < &proc[NPROC]; p++){
       acquire(&p->lock);
-      if(p->state == RUNNABLE && p->priority > maxp){
-        maxp = p->priority;
-        hp = p;
+      if(p->state == RUNNABLE){
+        int eff = p->priority + (ticks - p->readytime) / AGING_DIV;
+        if(eff > MAXEFFPRIORITY) eff = MAXEFFPRIORITY;
+
+        if(eff > maxp){
+          maxp = eff;
+          hp = p;
+        }
       }
       release(&p->lock);
     }
@@ -594,9 +606,9 @@ wakeup(void *chan)
   for(p = proc; p < &proc[NPROC]; p++) {
     if(p != myproc()){
       acquire(&p->lock);
-      p->readytime = ticks;   // record when it re-enters ready queue
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
+        p->readytime = ticks;   // record when it re-enters ready queue
       }
       release(&p->lock);
     }

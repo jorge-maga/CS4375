@@ -4,6 +4,9 @@
 #define SCHED_ROUNDROBIN 0
 #define SCHED_PRIORITY   1
 #define SCHED_POLICY     SCHED_PRIORITY
+
+#define MAXEFFPRIORITY 99    // cap on effective priority
+#define AGING_DIV      10    // smaller = faster aging (tune as needed)
 #define NFILE       100  // open files per system
 #define NINODE       50  // maximum number of active i-nodes
 #define NDEV         10  // maximum major device number
