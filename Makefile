@@ -141,6 +141,8 @@ UPROGS=\
 	$U/_task2\
 	$U/_task4\
 	$U/_pexec\
+	$U/_free\
+	$U/_memory-user
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

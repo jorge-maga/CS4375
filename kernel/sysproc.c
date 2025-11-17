@@ -121,3 +121,8 @@ uint64 sys_setpriority(void) {
   return 0;
 }
 
+uint64
+sys_freepmem(void)
+{
+  return freepmem();
+}
