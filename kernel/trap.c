@@ -37,6 +37,8 @@ void
 usertrap(void)
 {
   int which_dev = 0;
+  struct proc *p = myproc();
+  uint64 scause = r_scause();
 
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
@@ -45,12 +47,10 @@ usertrap(void)
   // since we're now in the kernel.
   w_stvec((uint64)kernelvec);
 
-  struct proc *p = myproc();
-  
   // save user program counter.
   p->trapframe->epc = r_sepc();
-  
-  if(r_scause() == 8){
+
+  if(scause == 8){
     // system call
 
     if(p->killed)
@@ -66,9 +66,34 @@ usertrap(void)
 
     syscall();
   } else if((which_dev = devintr()) != 0){
-    // ok
+    // device interrupt
+  } else if(scause == 13 || scause == 15) {
+    // load page fault (13) or store/AMO page fault (15)
+
+    uint64 va = r_stval();   // faulting virtual address
+
+    // Only handle faults on valid user addresses: [PGSIZE, p->sz)
+    if (va >= p->sz || va < PGSIZE) {
+      printf("usertrap(): page fault va %p out of range (sz=%p)\n", va, p->sz);
+      p->killed = 1;
+    } else {
+      uint64 a = PGROUNDDOWN(va);
+      char *mem = kalloc();
+      if (mem == 0) {
+        printf("usertrap(): out of memory allocating page\n");
+        p->killed = 1;
+      } else {
+        memset(mem, 0, PGSIZE);
+        if (mappages(p->pagetable, a, PGSIZE, (uint64)mem,
+                     PTE_R | PTE_W | PTE_X | PTE_U) != 0) {
+          kfree(mem);
+          p->killed = 1;
+        }
+      }
+    }
+    // fall through to common epilogue
   } else {
-    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+    printf("usertrap(): unexpected scause %p pid=%d\n", scause, p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
   }
@@ -82,6 +107,7 @@ usertrap(void)
 
   usertrapret();
 }
+
 
 //
 // return to user space
@@ -174,17 +200,24 @@ clockintr()
 // 1 if other device,
 // 0 if not recognized.
 int
-devintr()
+devintr(void)
 {
   uint64 scause = r_scause();
 
-  if((scause & 0x8000000000000000L) &&
-     (scause & 0xff) == 9){
-    // this is a supervisor external interrupt, via PLIC.
-
-    // irq indicates which device interrupted.
+  // Machine-mode timer interrupt (software interrupt for timer)
+  if(scause == 0x8000000000000001L){
+    // we're running on CPU 0, and the machine-mode
+    // timer interrupt is the only one we have enabled.
+    if(cpuid() == 0){
+      clockintr();
+    }
+    // acknowledge the software interrupt by clearing
+    // the SSIP bit in sip.
+    w_sip(r_sip() & ~2);
+    return 2;
+  } else if(scause == 0x8000000000000009L){
+    // external interrupt from PLIC.
     int irq = plic_claim();
-
     if(irq == UART0_IRQ){
       uartintr();
     } else if(irq == VIRTIO0_IRQ){
@@ -192,29 +225,10 @@ devintr()
     } else if(irq){
       printf("unexpected interrupt irq=%d\n", irq);
     }
-
-    // the PLIC allows each device to raise at most one
-    // interrupt at a time; tell the PLIC the device is
-    // now allowed to interrupt again.
     if(irq)
       plic_complete(irq);
-
     return 1;
-  } else if(scause == 0x8000000000000001L){
-    // software interrupt from a machine-mode timer interrupt,
-    // forwarded by timervec in kernelvec.S.
-
-    if(cpuid() == 0){
-      clockintr();
-    }
-    
-    // acknowledge the software interrupt by clearing
-    // the SSIP bit in sip.
-    w_sip(r_sip() & ~2);
-
-    return 2;
   } else {
     return 0;
   }
 }
-

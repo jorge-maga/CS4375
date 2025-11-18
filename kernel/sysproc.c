@@ -41,14 +41,24 @@ sys_wait(void)
 uint64
 sys_sbrk(void)
 {
-  int addr;
   int n;
+  uint64 addr;
+  struct proc *p = myproc();
 
   if(argint(0, &n) < 0)
     return -1;
-  addr = myproc()->sz;
-  if(growproc(n) < 0)
+
+  addr = p->sz;
+
+  // Basic sanity: don't let sz underflow
+  if(n < 0 && (uint64)(-n) > p->sz) {
     return -1;
+  }
+
+  // Lazy allocation:
+  // only adjust the virtual size (sz), do NOT allocate/free physical pages here.
+  p->sz = p->sz + n;
+
   return addr;
 }
 
