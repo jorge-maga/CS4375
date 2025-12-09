@@ -113,3 +113,129 @@ sys_freepmem(void)
   uint64 pages = kfreepages_count();
   return pages * PGSIZE;
 }
+
+uint64
+sys_sem_init(void)
+{
+  uint64 uaddr;   // user pointer to sem_t
+  int pshared;
+  int value;
+  struct proc *p = myproc();
+
+  // sem_init(sem_t *sem, int pshared, int value)
+  if (argaddr(0, &uaddr) < 0 ||
+      argint(1, &pshared) < 0 ||
+      argint(2, &value) < 0)
+    return -1;
+
+  if (value < 0)
+    return -1;
+
+  int idx = semalloc();
+  if (idx < 0)
+    return -1;
+
+  struct semaphore *s = &semtable.sem[idx];
+  acquire(&s->lock);
+  s->count = value;
+  s->valid = 1;
+  release(&s->lock);
+
+  // write the semaphore index back to user memory
+  sem_t kid = idx;
+  if (copyout(p->pagetable, uaddr, (char *)&kid, sizeof(sem_t)) < 0) {
+    semdealloc(idx);
+    return -1;
+  }
+
+  return 0;
+}
+
+uint64
+sys_sem_wait(void)
+{
+  uint64 uaddr;   // user pointer to sem_t
+  sem_t idx;
+  struct proc *p = myproc();
+
+  if (argaddr(0, &uaddr) < 0)
+    return -1;
+
+  if (copyin(p->pagetable, (char *)&idx, uaddr, sizeof(sem_t)) < 0)
+    return -1;
+
+  if (idx < 0 || idx >= NSEM)
+    return -1;
+
+  struct semaphore *s = &semtable.sem[idx];
+
+  acquire(&s->lock);
+  if (!s->valid) {
+    release(&s->lock);
+    return -1;
+  }
+
+  // P() operation
+  while (s->count == 0) {
+    sleep(s, &s->lock);   // atomically sleep & release lock
+    if (!s->valid) {
+      release(&s->lock);
+      return -1;
+    }
+  }
+  s->count--;
+  release(&s->lock);
+
+  return 0;
+}
+
+uint64
+sys_sem_post(void)
+{
+  uint64 uaddr;   // user pointer to sem_t
+  sem_t idx;
+  struct proc *p = myproc();
+
+  if (argaddr(0, &uaddr) < 0)
+    return -1;
+
+  if (copyin(p->pagetable, (char *)&idx, uaddr, sizeof(sem_t)) < 0)
+    return -1;
+
+  if (idx < 0 || idx >= NSEM)
+    return -1;
+
+  struct semaphore *s = &semtable.sem[idx];
+
+  acquire(&s->lock);
+  if (!s->valid) {
+    release(&s->lock);
+    return -1;
+  }
+
+  s->count++;
+  wakeup(s);          // wake any sleepers in sem_wait
+  release(&s->lock);
+
+  return 0;
+}
+
+uint64
+sys_sem_destroy(void)
+{
+  uint64 uaddr;   // user pointer to sem_t
+  sem_t idx;
+  struct proc *p = myproc();
+
+  if (argaddr(0, &uaddr) < 0)
+    return -1;
+
+  if (copyin(p->pagetable, (char *)&idx, uaddr, sizeof(sem_t)) < 0)
+    return -1;
+
+  if (idx < 0 || idx >= NSEM)
+    return -1;
+
+  semdealloc(idx);
+  return 0;
+}
