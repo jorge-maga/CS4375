@@ -18,14 +18,52 @@ rw_t *rw;
 void
 reader(void)
 {
-  /* implement your semaphore logic for reader */
+  int i;
+
+  for (i = 0; i < READER_ITERS; i++) {
+    // entry section: first reader locks out writers
+    sem_wait(&rw->mutex);
+    rw->readercount++;
+    if (rw->readercount == 1) {
+      sem_wait(&rw->wrt);       // first reader blocks writers
+    }
+    sem_post(&rw->mutex);
+
+    // critical section: read shared value
+    int v = rw->value;
+    printf("reader read %d\n", v);
+
+    // exit section: last reader lets writers in
+    sem_wait(&rw->mutex);
+    rw->readercount--;
+    if (rw->readercount == 0) {
+      sem_post(&rw->wrt);       // last reader unblocks writers
+    }
+    sem_post(&rw->mutex);
+  }
+
+  exit(0);
 }
 
 void
 writer(void)
 {
-  /* implement your semaphore logic for writer */
+  int i;
+
+  for (i = 0; i < WRITER_ITERS; i++) {
+    // writers need exclusive access
+    sem_wait(&rw->wrt);
+
+    // critical section: update shared value
+    rw->value++;
+    printf("writer wrote %d\n", rw->value);
+
+    sem_post(&rw->wrt);
+  }
+
+  exit(0);
 }
+
 
 int
 main(int argc, char *argv[])
