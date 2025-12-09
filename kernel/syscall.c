@@ -108,6 +108,8 @@ extern uint64 sys_getprocs(void); //hw3 getprocs
 extern uint64 sys_getpriority(void);
 extern uint64 sys_setpriority(void);
 extern uint64 sys_freepmem(void);
+extern uint64 sys_mmap(void);
+extern uint64 sys_munmap(void);
 extern uint64 sys_sem_init(void);
 extern uint64 sys_sem_destroy(void);
 extern uint64 sys_sem_wait(void);
@@ -141,6 +143,8 @@ static uint64 (*syscalls[])(void) = {
 [SYS_getpriority] sys_getpriority,
 [SYS_setpriority] sys_setpriority,
 [SYS_freepmem] sys_freepmem,
+[SYS_mmap] sys_mmap,
+[SYS_munmap] sys_munmap,
 [SYS_sem_init]    sys_sem_init,
 [SYS_sem_destroy] sys_sem_destroy,
 [SYS_sem_wait]    sys_sem_wait,

@@ -189,3 +189,8 @@ void            virtio_disk_intr(void);
 
 uint64 sys_getpriority(void);
 uint64 sys_setpriority(void);
+
+// semaphore.c
+void seminit(void);
+int semalloc(void);
+void semdealloc(int);

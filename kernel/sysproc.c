@@ -84,6 +84,49 @@ sys_sleep(void)
 }
 
 uint64
+sys_mmap(void)
+{
+  uint64 addr;   // requested addr (we'll ignore it)
+  int length;
+  int prot, flags, fd, offset;
+  struct proc *p = myproc();
+
+  // args: void *addr, uint length, int prot, int flags, int fd, int offset
+  if (argaddr(0, &addr) < 0 ||
+      argint(1, &length) < 0 ||
+      argint(2, &prot) < 0 ||
+      argint(3, &flags) < 0 ||
+      argint(4, &fd) < 0 ||
+      argint(5, &offset) < 0)
+    return (uint64)-1;
+
+  if (length <= 0)
+    return (uint64)-1;
+
+  // Very simple mmap: just grow the process by 'length' bytes
+  // and return the old size as the base address of the new region.
+  uint64 oldsz = p->sz;
+  if (growproc(length) < 0)
+    return (uint64)-1;
+
+  return oldsz;
+}
+
+uint64
+sys_munmap(void)
+{
+  uint64 addr;
+  int length;
+
+  // args: void *addr, uint length
+  if (argaddr(0, &addr) < 0 || argint(1, &length) < 0)
+    return -1;
+
+  // Simple stub: do nothing; memory gets freed when the process exits.
+  return 0;
+}
+
+uint64
 sys_kill(void)
 {
   int pid;
@@ -140,27 +183,122 @@ sys_freepmem(void)
 uint64
 sys_sem_init(void)
 {
-  // TODO: implement in Task 3
-  return -1;
-}
+  uint64 uaddr;
+  int pshared;
+  int value;
+  struct proc *p = myproc();
 
-uint64
-sys_sem_destroy(void)
-{
-  // TODO: implement in Task 3
-  return -1;
+  if (argaddr(0, &uaddr) < 0 ||
+      argint(1, &pshared) < 0 ||
+      argint(2, &value) < 0)
+    return -1;
+
+  if (value < 0)
+    return -1;
+
+  int idx = semalloc();
+  if (idx < 0)
+    return -1;
+
+  struct semaphore *s = &semtable.sem[idx];
+  acquire(&s->lock);
+  s->count = value;
+  s->valid = 1;
+  release(&s->lock);
+
+  sem_t kid = idx;
+  if (copyout(p->pagetable, uaddr, (char *)&kid, sizeof(sem_t)) < 0) {
+    semdealloc(idx);
+    return -1;
+  }
+
+  return 0;
 }
 
 uint64
 sys_sem_wait(void)
 {
-  // TODO: implement in Task 3
-  return -1;
+  uint64 uaddr;
+  sem_t idx;
+  struct proc *p = myproc();
+
+  if (argaddr(0, &uaddr) < 0)
+    return -1;
+
+  if (copyin(p->pagetable, (char *)&idx, uaddr, sizeof(sem_t)) < 0)
+    return -1;
+
+  if (idx < 0 || idx >= NSEM)
+    return -1;
+
+  struct semaphore *s = &semtable.sem[idx];
+
+  acquire(&s->lock);
+  if (!s->valid) {
+    release(&s->lock);
+    return -1;
+  }
+
+  while (s->count == 0) {
+    sleep(s, &s->lock);
+    if (!s->valid) {
+      release(&s->lock);
+      return -1;
+    }
+  }
+  s->count--;
+  release(&s->lock);
+
+  return 0;
 }
 
 uint64
 sys_sem_post(void)
 {
-  // TODO: implement in Task 3
-  return -1;
+  uint64 uaddr;
+  sem_t idx;
+  struct proc *p = myproc();
+
+  if (argaddr(0, &uaddr) < 0)
+    return -1;
+
+  if (copyin(p->pagetable, (char *)&idx, uaddr, sizeof(sem_t)) < 0)
+    return -1;
+
+  if (idx < 0 || idx >= NSEM)
+    return -1;
+
+  struct semaphore *s = &semtable.sem[idx];
+
+  acquire(&s->lock);
+  if (!s->valid) {
+    release(&s->lock);
+    return -1;
+  }
+
+  s->count++;
+  wakeup(s);
+  release(&s->lock);
+
+  return 0;
+}
+
+uint64
+sys_sem_destroy(void)
+{
+  uint64 uaddr;
+  sem_t idx;
+  struct proc *p = myproc();
+
+  if (argaddr(0, &uaddr) < 0)
+    return -1;
+
+  if (copyin(p->pagetable, (char *)&idx, uaddr, sizeof(sem_t)) < 0)
+    return -1;
+
+  if (idx < 0 || idx >= NSEM)
+    return -1;
+
+  semdealloc(idx);
+  return 0;
 }
