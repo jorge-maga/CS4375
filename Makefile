@@ -142,7 +142,9 @@ UPROGS=\
 	$U/_task4\
 	$U/_pexec\
 	$U/_free\
-	$U/_memory-user
+	$U/_memory-user\
+	$U/_rwtest-sem\
+	$U/_prodcons-sem\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

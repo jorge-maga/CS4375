@@ -136,3 +136,31 @@ sys_freepmem(void)
 {
   return freepmem();
 }
+
+uint64
+sys_sem_init(void)
+{
+  // TODO: implement in Task 3
+  return -1;
+}
+
+uint64
+sys_sem_destroy(void)
+{
+  // TODO: implement in Task 3
+  return -1;
+}
+
+uint64
+sys_sem_wait(void)
+{
+  // TODO: implement in Task 3
+  return -1;
+}
+
+uint64
+sys_sem_post(void)
+{
+  // TODO: implement in Task 3
+  return -1;
+}

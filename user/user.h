@@ -1,3 +1,5 @@
+#include "kernel/fcntl.h"
+
 struct stat;
 struct rtcdate;
 struct pstat; //hw3 getprocs
@@ -28,6 +30,14 @@ int getprocs(struct pstat*); //hw3 getprocs
 int getpriority(void);
 int setpriority(int);
 uint64 freepmem(void);
+
+void *mmap(void *addr, uint length, int prot, int flags, int fd, int offset);
+int munmap(void *addr, uint length);
+
+int sem_init(sem_t *sem, int pshared, int value);
+int sem_destroy(sem_t *sem);
+int sem_wait(sem_t *sem);
+int sem_post(sem_t *sem);
 
 
 // ulib.c
